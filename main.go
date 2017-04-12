@@ -1,12 +1,12 @@
 package main
 
 import (
-	"archive/zip"
 	"io"
 	"log"
 	"os"
 	"strings"
 
+	"github.com/itchio/arkive/zip"
 	"github.com/itchio/kompress/flate"
 
 	humanize "github.com/dustin/go-humanize"
@@ -52,7 +52,7 @@ func main() {
 
 		sr := io.NewSectionReader(zf, offset, int64(f.CompressedSize64))
 
-		fr := flate.NewReader(sr)
+		fr := flate.NewSaverReader(sr)
 
 		var mb int64 = 1024 * 1024
 		var readBytes int64
@@ -65,7 +65,7 @@ func main() {
 
 		for {
 			if readBytes > mb {
-				flate.WantSave(fr)
+				fr.WantSave()
 			}
 
 			n, err := fr.Read(buf)
@@ -73,7 +73,7 @@ func main() {
 				if err == io.EOF {
 					break
 				} else if err == flate.ReadyToSaveErr {
-					c, err = flate.Save(fr)
+					c, err = fr.Save()
 					if err != nil {
 						panic(err)
 					}
@@ -85,7 +85,7 @@ func main() {
 
 					sr = io.NewSectionReader(zf, offset, int64(f.CompressedSize64))
 
-					fr, err = flate.Resume(sr, c)
+					fr, err = c.Resume(sr)
 					if err != nil {
 						panic(err)
 					}

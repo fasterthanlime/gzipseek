@@ -823,10 +823,32 @@ func NewReader(r io.Reader) io.ReadCloser {
 
 type Saver interface {
 	WantSave()
+	Save() (*Checkpoint, error)
+}
+
+// A Checkpoint allows resuming inflation from a certain point
+// in the compressed data stream
+type Checkpoint struct {
+	// Woffset is the offset into compressed data
+	Woffset int64
+	// Roffset is the offset into uncompressed data
+	Roffset int64
+	// B is the currently read bits
+	B uint32
+	// Nb is the number of bits currently read into B
+	Nb uint
+	// Hist keeps track of the uncompressed output written so far
+	Hist []byte
+}
+
+func (c *Checkpoint) String() string {
+	return fmt.Sprintf("%s into uncompressed, %s into compressed",
+		humanize.IBytes(uint64(c.Woffset)),
+		humanize.IBytes(uint64(c.Roffset)))
 }
 
 type SaverReader interface {
-	Reader
+	io.ReadCloser
 	Saver
 }
 
@@ -839,57 +861,43 @@ func NewSaverReader(r io.Reader) SaverReader {
 	return &saverReader{f}
 }
 
-func (sr *saverReader) Read() (int, error) {
-
+func (sr *saverReader) Read(b []byte) (int, error) {
+	return sr.f.Read(b)
 }
 
-type Checkpoint struct {
-	woffset int64
-	roffset int64
-	b       uint32
-	nb      uint
-	hist    []byte
+func (sr *saverReader) Close() error {
+	return sr.f.Close()
 }
 
-func (c *Checkpoint) ReadOffset() int64 {
-	return c.roffset
+// WantSave signals the decompressor that it should stop
+// on the next block boundary to allow the consumer to perform a checkpoint
+func (sr *saverReader) WantSave() {
+	sr.f.wantSave = true
 }
 
-func (c *Checkpoint) String() string {
-	return fmt.Sprintf("%s into uncompressed, %s into compressed",
-		humanize.IBytes(uint64(c.woffset)),
-		humanize.IBytes(uint64(c.roffset)))
-}
+func (sr *saverReader) Save() (*Checkpoint, error) {
+	f := sr.f
 
-func WantSave(r io.Reader) {
-	f, ok := r.(*decompressor)
-	if ok {
-		f.wantSave = true
-	}
-}
-
-func Save(r io.Reader) (*Checkpoint, error) {
-	f, ok := r.(*decompressor)
-
-	if !ok {
-		return nil, fmt.Errorf("flate.Save called on non-flate Reader")
+	if !f.onBoundary {
+		return nil, fmt.Errorf("asked for save, but not on boundary")
 	}
 
 	res := &Checkpoint{
-		roffset: f.roffset,
-		woffset: f.woffset,
-		b:       f.b,
-		nb:      f.nb,
-		hist:    f.dict.hist,
+		Roffset: f.roffset,
+		Woffset: f.woffset,
+		B:       f.b,
+		Nb:      f.nb,
+		Hist:    f.dict.hist,
 	}
 
 	return res, nil
 }
 
-func Resume(r io.ReadSeeker, c *Checkpoint) (io.ReadCloser, error) {
+// Resume starts decompressing again from a given checkpoint
+func (c *Checkpoint) Resume(r io.ReadSeeker) (SaverReader, error) {
 	fixedHuffmanDecoderInit()
 
-	_, err := r.Seek(c.roffset, os.SEEK_SET)
+	_, err := r.Seek(c.Roffset, os.SEEK_SET)
 	if err != nil {
 		return nil, err
 	}
@@ -900,12 +908,12 @@ func Resume(r io.ReadSeeker, c *Checkpoint) (io.ReadCloser, error) {
 	f.codebits = new([numCodes]int)
 	f.step = (*decompressor).nextBlock
 
-	f.roffset = c.roffset
-	f.woffset = c.woffset
-	f.b = c.b
-	f.nb = c.nb
-	f.dict.init(maxMatchOffset, c.hist)
-	return &f, nil
+	f.roffset = c.Roffset
+	f.woffset = c.Woffset
+	f.b = c.B
+	f.nb = c.Nb
+	f.dict.init(maxMatchOffset, c.Hist)
+	return &saverReader{&f}, nil
 }
 
 // NewReaderDict is like NewReader but initializes the reader
