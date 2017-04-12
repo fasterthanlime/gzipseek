@@ -10,15 +10,11 @@ package flate
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"io"
-	"log"
 	"strconv"
 	"sync"
 
 	"os"
-
-	humanize "github.com/dustin/go-humanize"
 )
 
 const (
@@ -46,6 +42,13 @@ func (e CorruptInputError) Error() string {
 type InternalError string
 
 func (e InternalError) Error() string { return "flate: internal error: " + string(e) }
+
+var (
+	// ReadyToSaveError is returned by Read() when a SaverReader is ready to emit a checkpoint
+	ReadyToSaveError = errors.New("ready to save")
+	// NotOnBoundaryError is returned by Save() when a SaverReader wasn't ready to emit a checkpoint
+	NotOnBoundaryError = errors.New("asked to save, but not on boundary")
+)
 
 // A ReadError reports an error encountered while reading input.
 //
@@ -343,8 +346,6 @@ func (f *decompressor) nextBlock() {
 	}
 }
 
-var ReadyToSaveErr = errors.New("Ready to save!")
-
 func (f *decompressor) Read(b []byte) (int, error) {
 	for {
 		if len(f.toRead) > 0 {
@@ -360,7 +361,7 @@ func (f *decompressor) Read(b []byte) (int, error) {
 			return 0, f.err
 		}
 		if f.onBoundary && f.wantSave {
-			return 0, ReadyToSaveErr
+			return 0, ReadyToSaveError
 		}
 		f.step(f)
 	}
@@ -415,7 +416,6 @@ func (f *decompressor) readHuffman() error {
 		f.codebits[codeOrder[i]] = 0
 	}
 	if !f.h1.init(f.codebits[0:]) {
-		log.Printf("couldn't init h1")
 		return CorruptInputError(f.roffset)
 	}
 
@@ -443,7 +443,6 @@ func (f *decompressor) readHuffman() error {
 			rep = 3
 			nb = 2
 			if i == 0 {
-				log.Printf("i == 0 in length decoding")
 				return CorruptInputError(f.roffset)
 			}
 			b = f.bits[i-1]
@@ -465,7 +464,6 @@ func (f *decompressor) readHuffman() error {
 		f.b >>= nb
 		f.nb -= nb
 		if i+rep > n {
-			log.Printf("i+rep > n in length decoding")
 			return CorruptInputError(f.roffset)
 		}
 		for j := 0; j < rep; j++ {
@@ -475,7 +473,6 @@ func (f *decompressor) readHuffman() error {
 	}
 
 	if !f.h1.init(f.bits[0:nlit]) || !f.h2.init(f.bits[nlit:nlit+ndist]) {
-		log.Printf("couldn't init h1 or h2")
 		return CorruptInputError(f.roffset)
 	}
 
@@ -557,7 +554,6 @@ readLiteral:
 			length = 258
 			n = 0
 		default:
-			log.Printf("v = %d", v)
 			f.err = CorruptInputError(f.roffset)
 			return
 		}
@@ -609,14 +605,12 @@ readLiteral:
 			f.nb -= nb
 			dist = 1<<(nb+1) + 1 + extra
 		default:
-			log.Printf("dist %d >= maxNumDist %d", dist, maxNumDist)
 			f.err = CorruptInputError(f.roffset)
 			return
 		}
 
 		// No check on length; encoding can be prescient.
 		if dist > f.dict.histSize() {
-			log.Printf("dist %d >= f.dict.histSize() %d", dist, f.dict.histSize())
 			f.err = CorruptInputError(f.roffset)
 			return
 		}
@@ -841,12 +835,6 @@ type Checkpoint struct {
 	Hist []byte
 }
 
-func (c *Checkpoint) String() string {
-	return fmt.Sprintf("%s into uncompressed, %s into compressed",
-		humanize.IBytes(uint64(c.Woffset)),
-		humanize.IBytes(uint64(c.Roffset)))
-}
-
 type SaverReader interface {
 	io.ReadCloser
 	Saver
@@ -879,7 +867,7 @@ func (sr *saverReader) Save() (*Checkpoint, error) {
 	f := sr.f
 
 	if !f.onBoundary {
-		return nil, fmt.Errorf("asked for save, but not on boundary")
+		return nil, NotOnBoundaryError
 	}
 
 	res := &Checkpoint{
