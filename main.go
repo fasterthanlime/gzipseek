@@ -14,7 +14,11 @@ import (
 
 func main() {
 	fPath := os.Args[1]
-	eName := os.Args[2]
+
+	eName := ""
+	if len(os.Args) > 2 {
+		eName = os.Args[2]
+	}
 
 	zf, err := os.Open(fPath)
 	if err != nil {
@@ -30,6 +34,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	totalCheckpoints := 0
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -104,9 +110,13 @@ func main() {
 		log.Printf("%s: Read %s uncompressed data", f.Name, humanize.IBytes(uint64(totalReadBytes)))
 		log.Printf("%s: Created %d checkpoints", f.Name, len(checkpoints))
 
+		totalCheckpoints += len(checkpoints)
+
 		err = fr.Close()
 		if err != nil {
 			panic(err)
 		}
 	}
+
+	log.Printf("Across all files, created %d checkpoints", totalCheckpoints)
 }
