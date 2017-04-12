@@ -78,14 +78,15 @@ func main() {
 			if err != nil {
 				if err == io.EOF {
 					break
-				} else if err == flate.ReadyToSaveErr {
+				} else if err == flate.ReadyToSaveError {
 					c, err = fr.Save()
 					if err != nil {
 						panic(err)
 					}
 					fr.Close()
 
-					log.Printf("Saved checkpoint %s", c)
+					log.Printf("Saved checkpoint %s into uncompressed data, %s into compressed data",
+						humanize.IBytes(uint64(c.Woffset)), humanize.IBytes(uint64(c.Roffset)))
 
 					checkpoints = append(checkpoints, c)
 
