@@ -1,0 +1,38 @@
+{
+	"version": 0,
+	"dependencies": [
+		{
+			"importpath": "github.com/GranPC/lzma",
+			"repository": "https://github.com/GranPC/lzma",
+			"vcs": "git",
+			"revision": "6128f899cf78a89c4c149fa4f237b292d730242e",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/itchio/arkive/zip",
+			"repository": "https://github.com/itchio/arkive",
+			"vcs": "git",
+			"revision": "acc5be9e7262fdf87d27406476a28f03d7efd4c5",
+			"branch": "master",
+			"path": "/zip",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/itchio/kompress",
+			"repository": "https://github.com/itchio/kompress",
+			"vcs": "git",
+			"revision": "269cb45d2b3619c97598e1da7011e0f60c905292",
+			"branch": "master",
+			"notests": true
+		},
+		{
+			"importpath": "github.com/linuxerwang/lzma",
+			"repository": "https://github.com/linuxerwang/lzma",
+			"vcs": "git",
+			"revision": "b3e955ed0388863b741c7078c6980cb7ec2dcc7d",
+			"branch": "master",
+			"notests": true
+		}
+	]
+}
